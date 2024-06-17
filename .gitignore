@@ -1,0 +1,9 @@
+*.jpg
+*.csv
+*.txt
+*.xlsx
+*.xls
+*.npy
+*.npz
+
+Data

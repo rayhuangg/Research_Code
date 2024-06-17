@@ -1,0 +1,371 @@
+import matplotlib.pyplot as plt
+import cv2
+import numpy as np
+import pandas as pd
+import os
+import math
+import matplotlib.pyplot as plt
+
+
+# Set variables
+mode = "video"  # Choose mode: video, image, or folder
+
+video_path = "Data/exp_lab2.mp4"                                                # Video file path
+folder_image_path = "Data/exp_lab2-0004.png"                                    # Image file path
+folder_path = "Data/imgs/exp_lab2"                                              # Folder path
+calib_file_path = "calibration_images/exp_lab2/camera_calibration.npz"          # Camera calibration file path
+sampling_interval = 3                                                           # Sampling interval in seconds
+car_corners = [(790, 295), (1151, 307), (763, 771), (1151, 764)]                # Car corner coordinates: top-left, top-right, bottom-left, bottom-right
+car_front_center = (966, 304)                                                   # Car front center coordinates
+mm_to_pixel_ratio = 1.416                                                       # Conversion ratio between millimeters and pixels (1 mm = ? pixel, obtained from "ImageJ" )
+pixel_to_mm_ratio = 1 / mm_to_pixel_ratio                                       # (1 pixel = ? mm)
+display_realtime = True                                                         # Switch for displaying real-time recognition results
+use_calibration = False                                                         # Switch for using camera calibration parameters
+debug_frame = True                                                             # Switch for displaying debug information
+start_recognition_time = {"start_min": 0, "start_sec": 0}                       # Only for video mode
+results = []                                                                    # Store the results for plotting and csv output
+
+# Only for video mode
+cap = cv2.VideoCapture(video_path)
+frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
+frame_interval = frame_rate * sampling_interval
+start_frame = (start_recognition_time["start_min"] * 60 + start_recognition_time["start_sec"]) * frame_rate
+
+
+# Load camera calibration parameters
+if use_calibration:
+    try:
+        with np.load(calib_file_path) as data:
+            camera_matrix = data["camera_matrix"]
+            dist_coeffs = data["dist_coeffs"]
+    except FileNotFoundError:
+        print(f"Error: Camera calibration file not found at {calib_file_path}.")
+        camera_matrix = None
+        dist_coeffs = None
+    except Exception as e:
+        print(f"Error: An error occurred while loading camera calibration file: {e}")
+        camera_matrix = None
+        dist_coeffs = None
+else:
+    camera_matrix = None
+    dist_coeffs = None
+
+def undistort_image(image):
+    if camera_matrix is not None and dist_coeffs is not None:
+        h, w = image.shape[:2]
+        new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(camera_matrix, dist_coeffs, (w, h), 1, (w, h))
+        undistorted_img = cv2.undistort(image, camera_matrix, dist_coeffs, None, new_camera_matrix)
+        x, y, w, h = roi
+        # Ensure ROI is within image dimensions
+        # if w > 0 and h > 0:
+        #     undistorted_img = undistorted_img[y:y+h, x:x+w]
+        return undistorted_img
+    return image
+
+def detect_white_lines(frame, search_area):
+    """
+    Detects white lines in a given frame within a specified search area.
+
+    Args:
+        frame (numpy.ndarray): The input frame in BGR format.
+        search_area (tuple): The coordinates of the search area in the format (x1, y1, x2, y2).
+
+    Returns:
+        white_lines (list): A list of tuples representing the detected white lines in the format (lx1, ly1, lx2, ly2).
+        binary (numpy.ndarray): The binary image after morphological operations.
+
+    """
+    x1, y1, x2, y2 = search_area
+    search_frame = frame[y1:y2, x1:x2]
+    hsv = cv2.cvtColor(search_frame, cv2.COLOR_BGR2HSV)
+
+    lower_white = np.array([60, 0, 180])
+    upper_white = np.array([162, 255, 255])
+    mask = cv2.inRange(hsv, lower_white, upper_white)
+
+    # Morphological operations to reduce noise
+    kernel = np.ones((10, 10), np.uint8)  # Define the kernel size for morphological operations
+    binary = cv2.dilate(mask, kernel, iterations=2)   # Dilation operation
+    binary = cv2.erode(binary, kernel, iterations=2)  # Erosion operation
+
+    edges = cv2.Canny(binary, 30, 90, apertureSize=3)
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=50, minLineLength=100, maxLineGap=30)
+    white_lines = []
+    if lines is not None:
+        for line in lines:
+            lx1, ly1, lx2, ly2 = line[0]  # Coordinates within the ROI
+            lx1 += x1  # Convert coordinates to original image coordinates
+            ly1 += y1
+            lx2 += x1
+            ly2 += y1
+
+            # Exclude lines on the boundaries of the search area
+            offset = 3
+            if (x1 + offset < lx1 < x2 - offset) and (x1 + offset < lx2 < x2 - offset) and (y1 + offset < ly1 < y2 - offset) and (y1 + offset < ly2 < y2 - offset):
+                white_lines.append((lx1, ly1, lx2, ly2))
+                # Visualize the detected white lines
+                cv2.line(frame, (lx1, ly1), (lx2, ly2), (0, 255, 0), 2)
+
+            white_lines.sort(key=lambda x: min(x[0], x[3]))  # Sort by the smaller value between ly1 and ly2
+    # cv2.imshow("Edges", edges)
+    return white_lines, binary
+
+def calculate_line_length(point):
+    x1, y1, x2, y2 = point
+    length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+    return length
+
+def calculate_center_line(corners):
+    (x1, y1), (x2, y2) = corners
+    center_line = ((x1 + x2) / 2, (y1 + y2) / 2)
+    return center_line
+
+def extend_line_to_border(line, car_corners):
+    """
+    Extend the line and calculate its intersection points with the car_corners.
+
+    Args:
+        line (tuple): The line segment represented by (x1, y1, x2, y2).
+        car_corners (list): The corners of the car in the format [(x1, y1), (x2, y2), (x3, y3), (x4, y4)].
+
+    Returns:
+        list: The intersection points with the car boundaries.
+    """
+    x1, y1, x2, y2 = line
+    intersections = []
+
+    # Calculate line equation y = mx + c
+    if x2 - x1 != 0:
+        m = (y2 - y1) / (x2 - x1)
+        c = y1 - m * x1
+    else:
+        m = None  # Vertical line
+
+    # Define the car boundaries
+    left, right = min(car_corners[0][0], car_corners[3][0]), max(car_corners[1][0], car_corners[2][0])
+    top, bottom = min(car_corners[0][1], car_corners[1][1]), max(car_corners[2][1], car_corners[3][1])
+
+    # Check intersection with the left boundary (x = left)
+    if m is not None:
+        y_left = int(m * left + c)
+        if top <= y_left <= bottom:
+            intersections.append((left, y_left))
+
+    # Check intersection with the right boundary (x = right)
+    if m is not None:
+        y_right = int(m * right + c)
+        if top <= y_right <= bottom:
+            intersections.append((right, y_right))
+
+    # Check intersection with the top boundary (y = top)
+    if m is not None:
+        if m != 0:  # Avoid division by zero for horizontal lines
+            x_top = int((top - c) / m)
+            if left <= x_top <= right:
+                intersections.append((x_top, top))
+    else:
+        intersections.append((x1, top))  # Vertical line case
+
+    # Check intersection with the bottom boundary (y = bottom)
+    if m is not None:
+        if m != 0:  # Avoid division by zero for horizontal lines
+            x_bottom = int((bottom - c) / m)
+            if left <= x_bottom <= right:
+                intersections.append((x_bottom, bottom))
+    else:
+        intersections.append((x1, bottom))  # Vertical line case
+
+    return intersections
+
+def point_to_line_distance_and_projection(front_center, rear_center, point):
+    """
+    Calculates the distance between a point and a line segment, and returns the projection of the point onto the line.
+
+    Args:
+        front_center (tuple): The coordinates of the front center of the line segment.
+        rear_center (tuple): The coordinates of the rear center of the line segment.
+        point (tuple): The coordinates of the point.
+
+    Returns:
+        tuple: A tuple containing the distance between the point and the line segment, the slope of the line segment,
+               the y-intercept of the line segment, and the coordinates of the projection of the point onto the line.
+
+    """
+    x1, y1 = front_center
+    x2, y2 = rear_center
+    x0, y0 = point
+
+    # Calculate the slope and y-intercept of the line segment
+    if x1 == x2:  # Vertical line
+        slope = float('inf')
+        intercept = None
+    else:
+        slope = (y2 - y1) / (x2 - x1)
+        intercept = y1 - slope * x1
+
+    # Calculate the distance between the point and the line
+    if slope == float('inf'):
+        distance = abs(x0 - x1)
+        projection_x = x1
+        projection_y = y0
+    else:
+        distance = abs(slope * x0 - y0 + intercept) / math.sqrt(slope**2 + 1)
+        projection_x = (slope * (y0 - intercept) + x0) / (slope**2 + 1)
+        projection_y = (slope**2 * y0 + slope * x0 + intercept) / (slope**2 + 1)
+
+    # Calculate the cross product of vectors AB and AP to determine the position of the point
+    cross_product = (x2 - x1) * (y0 - y1) - (y2 - y1) * (x0 - x1)
+
+    # Determine the sign of the distance based on the sign of the cross product
+    if cross_product > 0:
+        return -distance, slope, intercept, (projection_x, projection_y)  # Left side, distance is negative
+    elif cross_product < 0:
+        return distance, slope, intercept, (projection_x, projection_y)   # Right side, distance is positive
+    else:
+        return 0, slope, intercept, (projection_x, projection_y)  # Point is on the line
+
+def process_frame(frame, frame_index):
+    print(f"\nProcessing frame {frame_index}...")
+    frame = undistort_image(frame)
+    assert frame is not None, "Error: Failed to undistort image."
+
+    frame_height, frame_width = frame.shape[:2]
+
+    # Define search areas: front and rear of the car: (Xmin, Ymin, Xmax, Ymax)
+    front_search_area = (
+        450,
+        0,
+        frame_width - 450,
+        max(car_corners[0][1], car_corners[1][1]),
+    )
+    rear_search_area = (
+        450,
+        min(car_corners[2][0], car_corners[3][0]),
+        frame_width - 450,
+        frame_height,
+    )
+
+    # Mark search areas on the original frame
+    cv2.rectangle(frame, (front_search_area[0], front_search_area[1]), (front_search_area[2], front_search_area[3]), (255, 0, 0), 2)
+    cv2.rectangle(frame, (rear_search_area[0], rear_search_area[1]), (rear_search_area[2], rear_search_area[3]), (255, 0, 0), 2)
+
+    front_white_lines, front_binary = detect_white_lines(frame, front_search_area)
+    rear_white_lines, rear_binary = detect_white_lines(frame, rear_search_area)
+
+    print("Front white lines detected:", front_white_lines)
+    print("Rear white lines detected:", rear_white_lines)
+
+    front_line_lengths = [round(calculate_line_length(line), 2) for line in front_white_lines]
+    rear_line_lengths = [round(calculate_line_length(line), 2) for line in rear_white_lines]
+
+    front_longest_line = front_white_lines[np.argmax(front_line_lengths)] if front_white_lines else None
+    rear_longest_line = rear_white_lines[np.argmax(rear_line_lengths)] if rear_white_lines else None
+    print(f"{rear_longest_line=}")
+
+    cv2.line(frame, (front_longest_line[0], front_longest_line[1]), (front_longest_line[2], front_longest_line[3]), (0, 50, 255), 5)
+    cv2.line(frame, (rear_longest_line[0], rear_longest_line[1]), (rear_longest_line[2], rear_longest_line[3]), (0, 50, 255), 5)
+
+    front_intersections_raw = extend_line_to_border(front_longest_line, car_corners)
+    print(f"{front_intersections_raw=}")
+    front_intersection_upper = front_intersections_raw[0] if front_intersections_raw[0][1] < front_intersections_raw[1][1] else front_intersections_raw[1]
+    rear_intersections_raw = extend_line_to_border(rear_longest_line, car_corners)
+    print(f"{rear_intersections_raw=}")
+    rear_intersection_lower = rear_intersections_raw[0] if rear_intersections_raw[0][1] > rear_intersections_raw[1][1] else rear_intersections_raw[1]
+
+    cv2.circle(frame, front_intersection_upper, 10, (0, 0, 200), 5)
+    cv2.circle(frame, rear_intersection_lower, 10, (0, 0, 200), 5)
+
+    if len(front_intersection_upper) >= 2 and len(rear_intersection_lower) >= 2:
+        front_center = front_intersection_upper
+        rear_center = rear_intersection_lower
+
+        distance, slope, intercept, projection = point_to_line_distance_and_projection(front_center, rear_center, car_front_center)
+        offset = distance * pixel_to_mm_ratio
+
+        print(f"Robot Offset: {offset:.2f}")
+
+        results.append((frame_index, cap.get(cv2.CAP_PROP_POS_MSEC) / 1000, offset))
+
+        if display_realtime:
+            # Draw lane center line
+            cv2.line(frame, (int(front_center[0]), int(front_center[1])), (int(rear_center[0]), int(rear_center[1])), (0, 250, 250), 4)
+
+            # Mark car front center point
+            cv2.circle(frame, car_front_center, 10, (20, 250, 0), -1)
+
+            # Mark equation of the lane center line
+            cv2.putText(frame, f"y = {slope:.2f}x + {intercept:.2f}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+
+            # Draw vertical distance from car front center point to lane center line
+            cv2.line(frame, (int(car_front_center[0]), int(car_front_center[1])), (int(projection[0]), int(projection[1])), (0, 0, 255), 3)
+            draw_position = (int((car_front_center[0] + projection[0]) / 2), int((car_front_center[1] + projection[1]) / 2) + 70)
+            cv2.putText(frame, f"Distance: {offset:.2f} mm", draw_position, cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
+
+    # Display multiple frames
+    frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
+    cv2.imshow("Processed Frame", frame)
+
+    if front_binary is not None and debug_frame:
+        cv2.imshow("Front Binary Frame", front_binary)
+    if rear_binary is not None and debug_frame:
+        cv2.imshow("Rear Binary Frame", rear_binary)
+
+    if mode == "image":
+        cv2.waitKey(0)
+
+    if cv2.waitKey(1) & 0xFF == ord("q"):
+        pass
+
+if __name__ == "__main__":
+    if mode == "video":
+        frame_index = 0
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if frame_index >= start_frame:
+                if (frame_index - start_frame) % frame_interval == 0:
+                    process_frame(frame, frame_index)
+            frame_index += 1
+
+    elif mode == "image":
+        frame = cv2.imread(folder_image_path)
+        process_frame(frame, 0)
+
+    elif mode == "folder":
+        image_files = sorted(os.listdir(folder_path))  # Sort image files in the folder
+        current_index = 0  # Current image index
+
+        while True:
+            image_file = image_files[current_index]
+            folder_image_path = os.path.join(folder_path, image_file)
+            frame = cv2.imread(folder_image_path)
+            process_frame(frame, current_index)
+
+            key = cv2.waitKey(0)
+            if key == ord("d"):  # Press "d" key to go to the next image
+                current_index = min(current_index + 1, len(image_files) - 1)
+            elif key == ord("a"):  # Press "a" key to go to the previous image
+                current_index = max(current_index - 1, 0)
+            elif key == ord("q"):  # Press "q" key to leave the loop
+                break
+
+    else:
+        print("Invalid mode selected. Please choose 'video', 'image', or 'folder'.")
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+    # 繪製偏移量折線圖
+    if results:
+        df = pd.DataFrame(results, columns=["Frame Index", "Timestamp", "Offset"])
+        plt.plot(df["Frame Index"], df["Offset"])
+        plt.xlabel("Frame Index")
+        plt.ylabel("Offset (mm)")
+        plt.title("Vehicle Offset Over Time")
+        plt.show()
+
+        # 輸出CSV文件
+        df.to_csv("vehicle_offset.csv", index=False)
+    else:
+        print("No results to display.")
