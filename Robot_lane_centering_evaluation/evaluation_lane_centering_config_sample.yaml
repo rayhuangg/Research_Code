@@ -1,0 +1,21 @@
+mode: "video"
+video_path: "Data/caseX_dbscan_testX.mp4"
+image_path: ""
+folder_path: ""
+output_folder: "Data/caseX_dbscan_testX"
+sampling_interval: 2
+car_corners:
+  - [790, 295]
+  - [1151, 307]
+  - [763, 771]
+  - [1151, 764]
+car_front_center: [966, 304]
+mm_to_pixel_ratio: 1.416
+calib_file_path: "calibration_images/exp_lab2/camera_calibration.npz"
+use_calibration: false
+display_realtime: true
+debug_frame: false
+start_recognition_time:
+  start_min: 0
+  start_sec: 1
+  start_ms: 0.133

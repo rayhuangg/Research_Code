@@ -1,3 +1,4 @@
+from pathlib import Path
 import matplotlib.pyplot as plt
 import cv2
 import numpy as np
@@ -5,32 +6,65 @@ import pandas as pd
 import os
 import math
 import matplotlib.pyplot as plt
+import yaml
+import argparse
+from datetime import datetime
+
+def load_config(config_path):
+    with open(config_path, 'r') as file:
+        config = yaml.safe_load(file)
+    if '_BASE_' in config:
+        base_path = config.pop('_BASE_')
+        base_config = load_config(os.path.join(os.path.dirname(config_path), base_path))
+        base_config.update(config)
+        return base_config
+    return config
+
+# Argument parser to get the config file path
+parser = argparse.ArgumentParser(description='Process some parameters.')
+parser.add_argument('--config', type=str, required=True, help='Path to the config file')
+args = parser.parse_args()
+
+# Load configuration
+config = load_config(args.config)
+
+# Accessing the parameters from the config
+mode = config.get('mode', 'video')
+video_path = config.get('video_path', 'Data/exp_lab2.mp4')
+image_path = config.get('image_path', 'Data/imgs/exp_lab2/frame_0004.jpg')
+folder_path = config.get('folder_path', 'Data/imgs/exp_lab2')
+calib_file_path = config.get('calib_file_path', 'calibration_images/exp_lab2/camera_calibration.npz')
+output_folder = config.get('output_folder', f'Data/robot_offset_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.csv')
+sampling_interval = config.get('sampling_interval', 1)
+car_corners = config.get('car_corners', [(790, 295), (1151, 307), (763, 771), (1151, 764)])
+car_front_center = config.get('car_front_center', (966, 304))
+mm_to_pixel_ratio = config.get('mm_to_pixel_ratio', 1.416)
+pixel_to_mm_ratio = 1 / mm_to_pixel_ratio
+display_realtime = config.get('display_realtime', True)
+use_calibration = config.get('use_calibration', False)
+debug_frame = config.get('debug_frame', False)
+start_recognition_time = config.get('start_recognition_time', {"start_min": 0, "start_sec": 0, "start_ms": 0.0})
+
+# Print loaded parameters for verification
+print("Mode:", mode)
+print("Video Path:", video_path)
+print("Image Path:", image_path)
+print("Folder Path:", folder_path)
+print("Calibration File Path:", calib_file_path)
+print("Output Folder:", output_folder)
+print("Sampling Interval:", sampling_interval)
+print("Car Corners:", car_corners)
+print("Car Front Center:", car_front_center)
+print("mm to Pixel Ratio:", mm_to_pixel_ratio)
+print("Pixel to mm Ratio:", pixel_to_mm_ratio)
+print("Display Realtime:", display_realtime)
+print("Use Calibration:", use_calibration)
+print("Debug Frame:", debug_frame)
+print("Start Recognition Time:", start_recognition_time)
 
 
-# Set variables
-mode = "video"  # Choose mode: video, image, or folder
 
-video_path = "Data/exp_lab2.mp4"                                                # Video file path
-folder_image_path = "Data/exp_lab2-0004.png"                                    # Image file path
-folder_path = "Data/imgs/exp_lab2"                                              # Folder path
-calib_file_path = "calibration_images/exp_lab2/camera_calibration.npz"          # Camera calibration file path
-sampling_interval = 3                                                           # Sampling interval in seconds
-car_corners = [(790, 295), (1151, 307), (763, 771), (1151, 764)]                # Car corner coordinates: top-left, top-right, bottom-left, bottom-right
-car_front_center = (966, 304)                                                   # Car front center coordinates
-mm_to_pixel_ratio = 1.416                                                       # Conversion ratio between millimeters and pixels (1 mm = ? pixel, obtained from "ImageJ" )
-pixel_to_mm_ratio = 1 / mm_to_pixel_ratio                                       # (1 pixel = ? mm)
-display_realtime = True                                                         # Switch for displaying real-time recognition results
-use_calibration = False                                                         # Switch for using camera calibration parameters
-debug_frame = True                                                             # Switch for displaying debug information
-start_recognition_time = {"start_min": 0, "start_sec": 0}                       # Only for video mode
-results = []                                                                    # Store the results for plotting and csv output
-
-# Only for video mode
-cap = cv2.VideoCapture(video_path)
-frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
-frame_interval = frame_rate * sampling_interval
-start_frame = (start_recognition_time["start_min"] * 60 + start_recognition_time["start_sec"]) * frame_rate
-
+results = []
 
 # Load camera calibration parameters
 if use_calibration:
@@ -79,8 +113,8 @@ def detect_white_lines(frame, search_area):
     search_frame = frame[y1:y2, x1:x2]
     hsv = cv2.cvtColor(search_frame, cv2.COLOR_BGR2HSV)
 
-    lower_white = np.array([60, 0, 180])
-    upper_white = np.array([162, 255, 255])
+    lower_white = np.array([97, 0, 147])
+    upper_white = np.array([180, 255, 255])
     mask = cv2.inRange(hsv, lower_white, upper_white)
 
     # Morphological operations to reduce noise
@@ -252,24 +286,23 @@ def process_frame(frame, frame_index):
     front_white_lines, front_binary = detect_white_lines(frame, front_search_area)
     rear_white_lines, rear_binary = detect_white_lines(frame, rear_search_area)
 
-    print("Front white lines detected:", front_white_lines)
-    print("Rear white lines detected:", rear_white_lines)
+    # print("Front white lines detected:", front_white_lines)
+    # print("Rear white lines detected:", rear_white_lines)
 
     front_line_lengths = [round(calculate_line_length(line), 2) for line in front_white_lines]
     rear_line_lengths = [round(calculate_line_length(line), 2) for line in rear_white_lines]
 
     front_longest_line = front_white_lines[np.argmax(front_line_lengths)] if front_white_lines else None
     rear_longest_line = rear_white_lines[np.argmax(rear_line_lengths)] if rear_white_lines else None
-    print(f"{rear_longest_line=}")
 
     cv2.line(frame, (front_longest_line[0], front_longest_line[1]), (front_longest_line[2], front_longest_line[3]), (0, 50, 255), 5)
     cv2.line(frame, (rear_longest_line[0], rear_longest_line[1]), (rear_longest_line[2], rear_longest_line[3]), (0, 50, 255), 5)
 
     front_intersections_raw = extend_line_to_border(front_longest_line, car_corners)
-    print(f"{front_intersections_raw=}")
+    # print(f"{front_intersections_raw=}")
     front_intersection_upper = front_intersections_raw[0] if front_intersections_raw[0][1] < front_intersections_raw[1][1] else front_intersections_raw[1]
     rear_intersections_raw = extend_line_to_border(rear_longest_line, car_corners)
-    print(f"{rear_intersections_raw=}")
+    # print(f"{rear_intersections_raw=}")
     rear_intersection_lower = rear_intersections_raw[0] if rear_intersections_raw[0][1] > rear_intersections_raw[1][1] else rear_intersections_raw[1]
 
     cv2.circle(frame, front_intersection_upper, 10, (0, 0, 200), 5)
@@ -284,7 +317,10 @@ def process_frame(frame, frame_index):
 
         print(f"Robot Offset: {offset:.2f}")
 
-        results.append((frame_index, cap.get(cv2.CAP_PROP_POS_MSEC) / 1000, offset))
+        if mode == "video":
+            results.append((frame_index, cap.get(cv2.CAP_PROP_POS_MSEC) / 1000, round(offset, 2)))
+        else:
+            results.append((frame_index, 0, round(offset, 2)))
 
         if display_realtime:
             # Draw lane center line
@@ -318,6 +354,20 @@ def process_frame(frame, frame_index):
 
 if __name__ == "__main__":
     if mode == "video":
+        video_path = Path(video_path)
+        if not Path.is_file(video_path):
+            raise FileNotFoundError(f"Error: Video file not found at {video_path}")
+        video_name = video_path.stem
+
+        video_path_absolute = video_path.absolute().as_posix()
+        cap = cv2.VideoCapture(video_path_absolute)
+        frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
+        frame_interval = frame_rate * sampling_interval
+        start_frame = (start_recognition_time["start_min"] * 60 + start_recognition_time["start_sec"]) * frame_rate + round(start_recognition_time["start_ms"] * frame_rate)
+        print(f"{start_recognition_time = }")
+        print(f"Start frame: {start_frame}")
+
+        missing_frame = []
         frame_index = 0
         while cap.isOpened():
             ret, frame = cap.read()
@@ -325,20 +375,46 @@ if __name__ == "__main__":
                 break
             if frame_index >= start_frame:
                 if (frame_index - start_frame) % frame_interval == 0:
-                    process_frame(frame, frame_index)
+                    try:
+                        process_frame(frame, frame_index)
+                    except (ValueError, IndexError, TypeError) as e:
+                        print(f"Skipping frame {frame_index} due to error: {e}")
+                        print("No worries, keep going!")
+                        missing_frame.append(frame_index)
+
             frame_index += 1
 
+        cap.release()
+        print("\n*** IMPORTANT ***")
+        print(f"Missing frames: {missing_frame}, need to manual label them")
+
+        missing_frame_path = Path(output_folder) / "missing_frame.txt"
+        with open(missing_frame_path, "w") as f:
+            for item in missing_frame:
+                f.write(f"{item}\n")
+        csv_file_path = os.path.join(os.getcwd(), output_folder, f"vehicle_offset_{video_name}.csv")
+
     elif mode == "image":
-        frame = cv2.imread(folder_image_path)
+        image_path = Path(image_path)
+        if not Path.is_file(image_path):
+            raise FileNotFoundError(f"Error: Image file not found at {image_path}")
+        frame = cv2.imread(image_path.absolute().as_posix())
         process_frame(frame, 0)
 
     elif mode == "folder":
-        image_files = sorted(os.listdir(folder_path))  # Sort image files in the folder
+        folder_path = Path(folder_path)
+        if not Path.is_dir(folder_path):
+            raise FileNotFoundError(f"Error: Folder not found at {folder_path}")
+        folder_name = folder_path.split("/")[-1]
+
+        folder_path_absolute = folder_path.absolute().as_posix()
+
+        image_files = sorted(os.listdir(folder_path_absolute))  # Sort image files in the folder
         current_index = 0  # Current image index
 
         while True:
             image_file = image_files[current_index]
-            folder_image_path = os.path.join(folder_path, image_file)
+            folder_image_path = os.path.join(folder_path_absolute, image_file)
             frame = cv2.imread(folder_image_path)
             process_frame(frame, current_index)
 
@@ -350,22 +426,25 @@ if __name__ == "__main__":
             elif key == ord("q"):  # Press "q" key to leave the loop
                 break
 
+        csv_file_path = os.path.join(os.getcwd(), output_folder, f"vehicle_offset_{folder_name}.csv")
+
     else:
         print("Invalid mode selected. Please choose 'video', 'image', or 'folder'.")
 
-    cap.release()
     cv2.destroyAllWindows()
 
     # 繪製偏移量折線圖
     if results:
         df = pd.DataFrame(results, columns=["Frame Index", "Timestamp", "Offset"])
-        plt.plot(df["Frame Index"], df["Offset"])
-        plt.xlabel("Frame Index")
-        plt.ylabel("Offset (mm)")
+        # plt.plot(df["Frame Index"], df["Offset"])
+        plt.plot(df["Offset"], df["Frame Index"])
+        plt.xlabel("Offset (mm)")
+        plt.ylabel("Frame Index")
         plt.title("Vehicle Offset Over Time")
+        plt.savefig(os.path.join(os.getcwd(), output_folder, f"path.png"))
         plt.show()
 
-        # 輸出CSV文件
-        df.to_csv("vehicle_offset.csv", index=False)
+        if mode != "image":
+            df.to_csv(csv_file_path, index=False)
     else:
         print("No results to display.")
