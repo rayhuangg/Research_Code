@@ -318,7 +318,7 @@ def process_frame(frame, frame_index):
         print(f"Robot Offset: {offset:.2f}")
 
         if mode == "video":
-            results.append((frame_index, cap.get(cv2.CAP_PROP_POS_MSEC) / 1000, round(offset, 2)))
+            results.append((frame_index, round(cap.get(cv2.CAP_PROP_POS_MSEC)/1000, 3), round(offset, 2)))
         else:
             results.append((frame_index, 0, round(offset, 2)))
 
@@ -433,10 +433,12 @@ if __name__ == "__main__":
 
     cv2.destroyAllWindows()
 
-    # 繪製偏移量折線圖
     if results:
         df = pd.DataFrame(results, columns=["Frame Index", "Timestamp", "Offset"])
         # plt.plot(df["Frame Index"], df["Offset"])
+        px = 1/plt.rcParams['figure.dpi']  # pixel in inches
+        plt.subplots(figsize=(800*px, 1600*px))
+        # plt.figure(figsize=(6, 15))
         plt.plot(df["Offset"], df["Frame Index"])
         plt.xlabel("Offset (mm)")
         plt.ylabel("Frame Index")
