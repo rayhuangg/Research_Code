@@ -1,0 +1,19 @@
+mode: "video"
+video_path: "Data/case2_hdbscan_test1/case2_hdbscan_test1.mp4"
+output_folder: "Data/case2_hdbscan_test1"
+
+# top left, top right, bottom left, bottom right (x,y)
+car_corners:
+  - [782, 316]
+  - [1142, 324]
+  - [758, 770]
+  - [1163, 766]
+car_front_center: [954, 317]
+
+mm_to_pixel_ratio: 1.3923
+
+calib_file_path: "calibration_images/exp_lab2/camera_calibration.npz"
+use_calibration: false
+display_realtime: true
+debug_frame: false
+frame_index: [3063]

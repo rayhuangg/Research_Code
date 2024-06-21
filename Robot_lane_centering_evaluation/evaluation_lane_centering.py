@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 import matplotlib.pyplot as plt
 import cv2
 import numpy as np
@@ -9,6 +10,8 @@ import matplotlib.pyplot as plt
 import yaml
 import argparse
 from datetime import datetime
+
+from utils.extract_frame import extract_frame
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
@@ -35,7 +38,7 @@ image_path = config.get('image_path', 'Data/imgs/exp_lab2/frame_0004.jpg')
 folder_path = config.get('folder_path', 'Data/imgs/exp_lab2')
 calib_file_path = config.get('calib_file_path', 'calibration_images/exp_lab2/camera_calibration.npz')
 output_folder = config.get('output_folder', f'Data/robot_offset_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.csv')
-sampling_interval = config.get('sampling_interval', 1)
+sampling_interval = config.get('sampling_interval', 2)
 car_corners = config.get('car_corners', [(790, 295), (1151, 307), (763, 771), (1151, 764)])
 car_front_center = config.get('car_front_center', (966, 304))
 mm_to_pixel_ratio = config.get('mm_to_pixel_ratio', 1.416)
@@ -44,6 +47,7 @@ display_realtime = config.get('display_realtime', True)
 use_calibration = config.get('use_calibration', False)
 debug_frame = config.get('debug_frame', False)
 start_recognition_time = config.get('start_recognition_time', {"start_min": 0, "start_sec": 0, "start_ms": 0.0})
+manual_annote_missing_frame = config.get('manual_annote_missing_frame', False)
 
 # Print loaded parameters for verification
 print("Mode:", mode)
@@ -61,7 +65,7 @@ print("Display Realtime:", display_realtime)
 print("Use Calibration:", use_calibration)
 print("Debug Frame:", debug_frame)
 print("Start Recognition Time:", start_recognition_time)
-
+print("Manual Annotate Missing Frame:", manual_annote_missing_frame)
 
 
 results = []
@@ -309,25 +313,27 @@ def process_frame(frame, frame_index):
     cv2.circle(frame, rear_intersection_lower, 10, (0, 0, 200), 5)
 
     if len(front_intersection_upper) >= 2 and len(rear_intersection_lower) >= 2:
-        front_center = front_intersection_upper
-        rear_center = rear_intersection_lower
+        front_intersection = front_intersection_upper
+        rear_intersection = rear_intersection_lower
 
-        distance, slope, intercept, projection = point_to_line_distance_and_projection(front_center, rear_center, car_front_center)
+        distance, slope, intercept, projection = point_to_line_distance_and_projection(front_intersection, rear_intersection, car_front_center)
         offset = distance * pixel_to_mm_ratio
 
         print(f"Robot Offset: {offset:.2f}")
 
         if mode == "video":
             results.append((frame_index, round(cap.get(cv2.CAP_PROP_POS_MSEC)/1000, 3), round(offset, 2)))
-        else:
+        else: # folder and image
             results.append((frame_index, 0, round(offset, 2)))
 
         if display_realtime:
             # Draw lane center line
-            cv2.line(frame, (int(front_center[0]), int(front_center[1])), (int(rear_center[0]), int(rear_center[1])), (0, 250, 250), 4)
+            cv2.line(frame, (int(front_intersection[0]), int(front_intersection[1])), (int(rear_intersection[0]), int(rear_intersection[1])), (0, 250, 250), 4)
 
-            # Mark car front center point
+            # Mark car front center point and car corners
             cv2.circle(frame, car_front_center, 10, (20, 250, 0), -1)
+            for corner in car_corners:
+                cv2.circle(frame, corner, 10, (0, 0, 255), 5)
 
             # Mark equation of the lane center line
             cv2.putText(frame, f"y = {slope:.2f}x + {intercept:.2f}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
@@ -336,6 +342,11 @@ def process_frame(frame, frame_index):
             cv2.line(frame, (int(car_front_center[0]), int(car_front_center[1])), (int(projection[0]), int(projection[1])), (0, 0, 255), 3)
             draw_position = (int((car_front_center[0] + projection[0]) / 2), int((car_front_center[1] + projection[1]) / 2) + 70)
             cv2.putText(frame, f"Distance: {offset:.2f} mm", draw_position, cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
+
+            # save the frame image with the annotation
+            save_path = Path(output_folder) / "annotated_frames" / f"frame_{frame_index}_offset_{offset:.2f}.jpg"
+            print(f"Saving annotated frame to {save_path}")
+            cv2.imwrite(save_path.absolute().as_posix(), frame)
 
     # Display multiple frames
     frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
@@ -351,6 +362,77 @@ def process_frame(frame, frame_index):
 
     if cv2.waitKey(1) & 0xFF == ord("q"):
         pass
+
+
+def get_intersection_points_by_mouse(frame_img):
+    """
+    Detect mouse click positions on a given frame to record front and rear intersection points.
+
+    Parameters:
+    frame (numpy.ndarray): The image frame to display and interact with
+
+    Returns:
+    tuple: Coordinates of front_intersection and rear_intersection
+    """
+    assert frame_img is not None, "Error: Frame is None"
+
+    # Coordinates storage
+    points = []
+
+    def mouse_callback(event, x, y, flags, param):
+        # Check for left mouse button click
+        if event == cv2.EVENT_LBUTTONDOWN:
+            points.append((x, y))
+            print(f"Point {len(points)}: {x}, {y}")
+            cv2.circle(frame_img, (x, y), 5, (0, 255, 0), -1)
+            cv2.putText(frame_img, f"({x}, {y})", (x + 10, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            if len(points) == 2:
+                # Close the window after the second click
+                cv2.destroyAllWindows()
+
+    # Create a window and set the mouse callback function
+    cv2.namedWindow("Image")
+    cv2.setMouseCallback("Image", mouse_callback)
+
+    # Display the image and wait for two clicks
+    while True:
+        text = "Click on the contact points on the front and rear of the car in sequence: 1. Front, 2. Rear of car"
+        cv2.putText(frame_img, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+        # Draw car_front_center and car_corners on the frame
+        cv2.circle(frame_img, car_front_center, 10, (0, 255, 0), 5)
+
+        for i in range(len(car_corners)):
+            cv2.line(frame_img, car_corners[i], car_corners[(i+1)%len(car_corners)], (0, 0, 255), 2)
+        for corner in car_corners:
+            cv2.circle(frame_img, corner, 10, (0, 0, 255), 5)
+
+        # frame_img = cv2.resize(frame_img, (0, 0), fx=0.5, fy=0.5)
+        cv2.imshow("Image", frame_img)
+
+        if cv2.waitKey(1) & 0xFF == 27:  # Exit if ESC is pressed
+            break
+        if len(points) == 2:
+            break
+
+    # Ensure the window is closed
+    cv2.destroyAllWindows()
+
+    if len(points) < 2:
+        raise ValueError("Two points were not selected")
+
+    return points[0], points[1]
+
+def manual_annote(frame, frame_index):
+    front_intersection, rear_intersection = get_intersection_points_by_mouse(frame)
+    distance, slope, intercept, projection = point_to_line_distance_and_projection(front_intersection, rear_intersection, car_front_center)
+    offset = distance * pixel_to_mm_ratio
+
+    print(f"Robot Offset: {offset:.2f}")
+
+    # Append the results to button part of the results list, and in save process will sort the results by frame_index
+    results.append((frame_index, 0, round(offset, 2))) # we can't get fps and time point from manual annotation
+
 
 if __name__ == "__main__":
     if mode == "video":
@@ -368,6 +450,13 @@ if __name__ == "__main__":
         print(f"Start frame: {start_frame}")
 
         missing_frame = []
+        annote_frame_output_path = Path(output_folder) / "annotated_frames"
+        if annote_frame_output_path.exists():
+            for item in annote_frame_output_path.iterdir():
+                item.unlink()  # Remove all files in the folder
+        else:
+            annote_frame_output_path.mkdir(parents=True, exist_ok=True)
+
         frame_index = 0
         while cap.isOpened():
             ret, frame = cap.read()
@@ -393,6 +482,18 @@ if __name__ == "__main__":
             for item in missing_frame:
                 f.write(f"{item}\n")
         csv_file_path = os.path.join(os.getcwd(), output_folder, f"vehicle_offset_{video_name}.csv")
+
+        # Manual annotation for missing frames
+        if manual_annote_missing_frame:
+            print("\nLet's start to process missing frames ...")
+
+            # Remove the output_path folder content before starting
+            shutil.rmtree(Path(output_folder) / "extracted_frames", ignore_errors=True)
+
+            for frame_index in missing_frame:
+                frame = extract_frame(video_path, frame_index, output_folder)
+                if frame is not None:
+                    manual_annote(frame, frame_index)
 
     elif mode == "image":
         image_path = Path(image_path)
@@ -434,11 +535,13 @@ if __name__ == "__main__":
     cv2.destroyAllWindows()
 
     if results:
+        if manual_annote_missing_frame:
+            # Sort the results by frame_index
+            results.sort(key=lambda x: x[0])
+
         df = pd.DataFrame(results, columns=["Frame Index", "Timestamp", "Offset"])
         # plt.plot(df["Frame Index"], df["Offset"])
-        px = 1/plt.rcParams['figure.dpi']  # pixel in inches
-        plt.subplots(figsize=(800*px, 1600*px))
-        # plt.figure(figsize=(6, 15))
+        plt.figure(figsize=(6, 15))
         plt.plot(df["Offset"], df["Frame Index"])
         plt.xlabel("Offset (mm)")
         plt.ylabel("Frame Index")
