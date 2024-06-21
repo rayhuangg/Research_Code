@@ -113,17 +113,17 @@ def detect_white_lines(frame, search_area):
     search_frame = frame[y1:y2, x1:x2]
     hsv = cv2.cvtColor(search_frame, cv2.COLOR_BGR2HSV)
 
-    lower_white = np.array([97, 0, 147])
-    upper_white = np.array([180, 255, 255])
+    lower_white = np.array([85, 0, 109])
+    upper_white = np.array([180, 199, 255])
     mask = cv2.inRange(hsv, lower_white, upper_white)
 
     # Morphological operations to reduce noise
     kernel = np.ones((10, 10), np.uint8)  # Define the kernel size for morphological operations
-    binary = cv2.dilate(mask, kernel, iterations=2)   # Dilation operation
-    binary = cv2.erode(binary, kernel, iterations=2)  # Erosion operation
+    binary = cv2.dilate(mask, kernel, iterations=3)   # Dilation operation
+    binary = cv2.erode(binary, kernel, iterations=3)  # Erosion operation
 
     edges = cv2.Canny(binary, 30, 90, apertureSize=3)
-    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=50, minLineLength=100, maxLineGap=30)
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=50, minLineLength=80, maxLineGap=50)
     white_lines = []
     if lines is not None:
         for line in lines:

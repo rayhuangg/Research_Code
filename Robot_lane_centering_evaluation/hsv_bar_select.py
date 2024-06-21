@@ -12,11 +12,11 @@ hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 cv2.namedWindow('HSV')
 
 # 創建滑動條
-cv2.createTrackbar('HLower','HSV',0,180,nothing)
+cv2.createTrackbar('HLower','HSV',85,180,nothing)
 cv2.createTrackbar('SLower','HSV',0,255,nothing)
-cv2.createTrackbar('VLower','HSV',0,255,nothing)
+cv2.createTrackbar('VLower','HSV',109,255,nothing)
 cv2.createTrackbar('HUpper','HSV',180,180,nothing)
-cv2.createTrackbar('SUpper','HSV',255,255,nothing)
+cv2.createTrackbar('SUpper','HSV',190,255,nothing)
 cv2.createTrackbar('VUpper','HSV',255,255,nothing)
 
 while(1):
