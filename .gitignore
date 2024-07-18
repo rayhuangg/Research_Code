@@ -164,6 +164,7 @@ cython_debug/
 
 *.jpg
 *.csv
+*.png
 *.txt
 *.xlsx
 *.xls
@@ -174,7 +175,12 @@ cython_debug/
 *.ffs_gui
 *.insv
 *.pptx
+*.yaml
 
 
 ## Folders ##
 Data
+
+
+## Exclude
+!*sample.yaml

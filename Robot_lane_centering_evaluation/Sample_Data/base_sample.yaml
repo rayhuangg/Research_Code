@@ -1,19 +1,18 @@
 mode: "video"
-video_path: "Data/case2_dbscan_test2/case2_dbscan_test2.mp4"
-output_folder: "Data/case2_dbscan_test2"
+video_path: ""
+image_path: ""
+folder_path: ""
+sampling_interval: 2
 
-# top left, top right, bottom left, bottom right (x,y)
 car_corners:
   - [782, 316]
   - [1142, 324]
   - [758, 770]
   - [1163, 766]
 lidar_center: [955, 390]
-
 mm_to_pixel_ratio: 1.3923
-
 calib_file_path: "calibration_images/exp_lab2/camera_calibration.npz"
 use_calibration: false
 display_realtime: true
-debug_frame: false
-frame_index: [ 1996, 4576,4636]
+
+manual_annote_missing_frame: true

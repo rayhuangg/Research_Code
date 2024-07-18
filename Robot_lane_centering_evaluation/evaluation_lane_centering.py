@@ -40,7 +40,7 @@ calib_file_path = config.get('calib_file_path', 'calibration_images/exp_lab2/cam
 output_folder = config.get('output_folder', f'Data/robot_offset_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.csv')
 sampling_interval = config.get('sampling_interval', 2)
 car_corners = config.get('car_corners', [(790, 295), (1151, 307), (763, 771), (1151, 764)])
-car_front_center = config.get('car_front_center', (966, 304))
+lidar_center = config.get('lidar_center', (955, 390))
 mm_to_pixel_ratio = config.get('mm_to_pixel_ratio', 1.416)
 pixel_to_mm_ratio = 1 / mm_to_pixel_ratio
 display_realtime = config.get('display_realtime', True)
@@ -58,7 +58,7 @@ print("Calibration File Path:", calib_file_path)
 print("Output Folder:", output_folder)
 print("Sampling Interval:", sampling_interval)
 print("Car Corners:", car_corners)
-print("Car Front Center:", car_front_center)
+print("Lidar Center:", lidar_center)
 print("mm to Pixel Ratio:", mm_to_pixel_ratio)
 print("Pixel to mm Ratio:", pixel_to_mm_ratio)
 print("Display Realtime:", display_realtime)
@@ -316,7 +316,7 @@ def process_frame(frame, frame_index):
         front_intersection = front_intersection_upper
         rear_intersection = rear_intersection_lower
 
-        distance, slope, intercept, projection = point_to_line_distance_and_projection(front_intersection, rear_intersection, car_front_center)
+        distance, slope, intercept, projection = point_to_line_distance_and_projection(front_intersection, rear_intersection, lidar_center)
         offset = distance * pixel_to_mm_ratio
 
         print(f"Robot Offset: {offset:.2f}")
@@ -331,7 +331,7 @@ def process_frame(frame, frame_index):
             cv2.line(frame, (int(front_intersection[0]), int(front_intersection[1])), (int(rear_intersection[0]), int(rear_intersection[1])), (0, 250, 250), 4)
 
             # Mark car front center point and car corners
-            cv2.circle(frame, car_front_center, 10, (20, 250, 0), -1)
+            cv2.circle(frame, lidar_center, 10, (20, 250, 0), -1)
             for corner in car_corners:
                 cv2.circle(frame, corner, 10, (0, 0, 255), 5)
 
@@ -339,8 +339,8 @@ def process_frame(frame, frame_index):
             cv2.putText(frame, f"y = {slope:.2f}x + {intercept:.2f}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
 
             # Draw vertical distance from car front center point to lane center line
-            cv2.line(frame, (int(car_front_center[0]), int(car_front_center[1])), (int(projection[0]), int(projection[1])), (0, 0, 255), 3)
-            draw_position = (int((car_front_center[0] + projection[0]) / 2), int((car_front_center[1] + projection[1]) / 2) + 70)
+            cv2.line(frame, (int(lidar_center[0]), int(lidar_center[1])), (int(projection[0]), int(projection[1])), (0, 0, 255), 3)
+            draw_position = (int((lidar_center[0] + projection[0]) / 2), int((lidar_center[1] + projection[1]) / 2) + 70)
             cv2.putText(frame, f"Distance: {offset:.2f} mm", draw_position, cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
 
             # save the frame image with the annotation
@@ -399,8 +399,8 @@ def get_intersection_points_by_mouse(frame_img):
         text = "Click on the contact points on the front and rear of the car in sequence: 1. Front, 2. Rear of car"
         cv2.putText(frame_img, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-        # Draw car_front_center and car_corners on the frame
-        cv2.circle(frame_img, car_front_center, 10, (0, 255, 0), 5)
+        # Draw lidar_center and car_corners on the frame
+        cv2.circle(frame_img, lidar_center, 10, (0, 255, 0), 5)
 
         for i in range(len(car_corners)):
             cv2.line(frame_img, car_corners[i], car_corners[(i+1)%len(car_corners)], (0, 0, 255), 2)
@@ -425,7 +425,7 @@ def get_intersection_points_by_mouse(frame_img):
 
 def manual_annote(frame, frame_index):
     front_intersection, rear_intersection = get_intersection_points_by_mouse(frame)
-    distance, slope, intercept, projection = point_to_line_distance_and_projection(front_intersection, rear_intersection, car_front_center)
+    distance, slope, intercept, projection = point_to_line_distance_and_projection(front_intersection, rear_intersection, lidar_center)
     offset = distance * pixel_to_mm_ratio
 
     print(f"Robot Offset: {offset:.2f}")

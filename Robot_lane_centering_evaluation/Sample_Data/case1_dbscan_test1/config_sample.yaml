@@ -1,0 +1,9 @@
+_BASE_: "../base.yaml"
+
+video_path: "Data/case1_dbscan_test1/case1_dbscan_test1.mp4"
+output_folder: "Data/case1_dbscan_test1"
+debug_frame: false
+start_recognition_time:
+  start_min: 0
+  start_sec: 12
+  start_ms: 0.1

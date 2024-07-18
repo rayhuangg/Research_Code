@@ -41,11 +41,11 @@ def extract_frame(video_path, frame_number, output_path):
         print(f"\nFrame {frame_number} extracted successfully")
 
     # Ensure the output directory exists
-    output_path.mkdir(parents=True, exist_ok=True)
+        # output_path.mkdir(parents=True, exist_ok=True)
 
-    # Save the frame image
-    frame_path = output_path / f"frame_{frame_number}.jpg"
-    cv2.imwrite(str(frame_path), frame)
+        # # Save the frame image
+        # frame_path = output_path / f"frame_{frame_number}.jpg"
+        # cv2.imwrite(str(frame_path), frame)
 
     # Release the video capture object
     cap.release()
