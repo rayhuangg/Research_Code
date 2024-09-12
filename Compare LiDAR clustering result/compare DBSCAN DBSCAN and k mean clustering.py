@@ -59,18 +59,18 @@ axes[2].text(0.5, 0.95, f'MinClusterSize=5', transform=axes[2].transAxes, fontsi
 
 
 # 儲存圖片
-plt.savefig('clurstering_result_DBSCAN_HDBSCAN_Kmeans.png', dpi=300, bbox_inches='tight', transparent=True)
+plt.savefig('clustering_result_DBSCAN_HDBSCAN_Kmeans.png', dpi=300, bbox_inches='tight', transparent=True)
 
 # %%
 fig = plt.figure(figsize=(8, 7))
 plt.scatter(X[:, 0], X[:, 1], cmap='viridis', s=50)
 plt.xticks([])
 plt.yticks([])
-plt.savefig('clurstering_raw.png', dpi=300, bbox_inches='tight', transparent=True)
+plt.savefig('clustering_raw.png', dpi=300, bbox_inches='tight', transparent=True)
 
 # %%
 fig = plt.figure(figsize=(8, 7))
 plt.scatter(X[:, 0], X[:, 1],c=hdbscan_labels, cmap='viridis', s=50)
 plt.xticks([])
 plt.yticks([])
-plt.savefig('clurstering_hdbscan.png', dpi=300, bbox_inches='tight', transparent=True)
+plt.savefig('clustering_hdbscan.png', dpi=300, bbox_inches='tight', transparent=True)
