@@ -162,9 +162,7 @@ cython_debug/
 
 #### Manual added ######
 
-*.jpg
 *.csv
-*.png
 *.txt
 *.xlsx
 *.xls
