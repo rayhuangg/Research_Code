@@ -7,9 +7,7 @@
 
 
 
-
-
 ## Compare three algorithms deal with the same data.
 [Compare LiDAR clustering result/compare HDBSCAN DBSCAN and k mean clustering.py](/Compare%20LiDAR%20clustering%20result/compare%20HDBSCAN%20DBSCAN%20and%20k%20mean%20clustering.py)
 
-![img](clurstering_result_DBSCAN_HDBSCAN_Kmeans.png)
+![img](/Compare%20LiDAR%20clustering%20result/clustering_result_DBSCAN_HDBSCAN_Kmeans.png)

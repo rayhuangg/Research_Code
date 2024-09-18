@@ -9,7 +9,7 @@ from sklearn.metrics import mean_squared_error
 
 # %%
 # Ground truth
-path = Path("ml_dataset/ground_truth.csv")
+path = Path("Tast_data/ground_truth.csv")
 data = np.genfromtxt(fname=path, delimiter=",", skip_header=1)
 
 ground_truth_distance = data[:, 2].reshape(-1)
@@ -295,7 +295,7 @@ def clustering(lidar_data, type="hdbscan", arrow=False, save=False, filename=Non
 
 
 # # 單張測試
-path = Path("ml_dataset/135.txt")
+path = Path("Tast_data/135.txt")
 conver_to_2txt(path)
 lidar_pos_x, lidar_pos_y, lidar_data = open_2_txt()
 
@@ -305,7 +305,7 @@ lidar_angle, mid_dis, spend_time = clustering(lidar_data, type="hdbscan", arrow=
 
 # %%
 def run_all_plt(type="raw", arrow=False, save=False):
-    all_pic_path = Path("./ml_dataset").glob("*.txt")
+    all_pic_path = Path("./Tast_data").glob("*.txt")
 
     # 因glob出來的結果不會做排序，造成跟csv中檔案順序不同，應急先暴力解決
     num = []
@@ -323,7 +323,7 @@ def run_all_plt(type="raw", arrow=False, save=False):
 
         number_of_path = 0
         for path in num:
-            conver_to_2txt(path="./ml_dataset/"+ str(path)+'.txt')
+            conver_to_2txt(path="./Tast_data/"+ str(path)+'.txt')
             lidar_pos_x, lidar_pos_y, lidar_data = open_2_txt()
             plot_lidar_raw_fig(lidar_pos_x, lidar_pos_y, save=True, filename= str(path))
             number_of_path += 1
@@ -336,7 +336,7 @@ def run_all_plt(type="raw", arrow=False, save=False):
 
         number_of_path = 0
         for path in num:
-            conver_to_2txt(path="./ml_dataset/"+ str(path)+'.txt')
+            conver_to_2txt(path="./Tast_data/"+ str(path)+'.txt')
             lidar_pos_x, lidar_pos_y, lidar_data = open_2_txt()
             lidar_angle, mid_dis, spend_time = clustering(lidar_data, type="dbscan", arrow=arrow, save=save, filename=str(path))
             output_dis.append(mid_dis)
@@ -354,7 +354,7 @@ def run_all_plt(type="raw", arrow=False, save=False):
 
         number_of_path = 0
         for path in num:
-            conver_to_2txt(path="./ml_dataset/"+ str(path)+'.txt')
+            conver_to_2txt(path="./Tast_data/"+ str(path)+'.txt')
             lidar_pos_x, lidar_pos_y, lidar_data = open_2_txt()
             lidar_angle, mid_dis, spend_time = clustering(lidar_data, type="hdbscan", arrow=arrow, save=save, filename=str(path))
             output_dis.append(mid_dis)
@@ -402,7 +402,7 @@ print("-"*50)
 # %%
 # calculate the FPS
 # ============================ DBSCAN ==============================
-all_pic_path = Path("./ml_dataset").glob("*.txt")
+all_pic_path = Path("./Tast_data").glob("*.txt")
 num = []
 for i in all_pic_path:
     num.append(i.stem)
@@ -413,7 +413,7 @@ dbscan_time_list = []
 num_times = 1000
 start = time.perf_counter()
 for i in range(num_times):
-    conver_to_2txt(Path("./ml_dataset/122.txt"))
+    conver_to_2txt(Path("./Tast_data/122.txt"))
     lidar_pos_x, lidar_pos_y, lidar_data = open_2_txt()
     _, _, spend_time = clustering(lidar_data, type="dbscan", arrow=True, save=False)
     dbscan_time_list.append(spend_time)
@@ -441,7 +441,7 @@ hdbscan_time_list = []
 num_times = 3
 start = time.perf_counter()
 for i in range(num_times):
-    conver_to_2txt(Path("./ml_dataset/122.txt"))
+    conver_to_2txt(Path("./Tast_data/122.txt"))
     lidar_pos_x, lidar_pos_y, lidar_data = open_2_txt()
     _, _, spend_time = clustering(lidar_data, type="hdbscan", arrow=True, save=False)
     hdbscan_time_list.append(spend_time)
